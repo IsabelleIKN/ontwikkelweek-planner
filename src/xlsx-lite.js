@@ -11,7 +11,7 @@ const XL = (() => {
     title: [3, null, 0, 'left', 'center'], head: [2, 'FF2F5FD0', 1, 'center', 'center'], part: [1, 'FFF0EEE8', 1, 'center', 'center'], name: [1, null, 1, 'left', 'center'],
     les: [0, 'FFDBE8FB', 1, 'center', 'center'], dbl: [0, 'FFFDE3B4', 1, 'center', 'center'], bad: [0, 'FFF9C9C9', 1, 'center', 'center'],
     leeg: [4, 'FFFFF4DD', 1, 'center', 'center'], studie: [4, 'FFE4E2DC', 1, 'center', 'center'], vn: [4, 'FFE0F0F0', 1, 'center', 'center'],
-    exc: [0, 'FFE9DEFA', 1, 'center', 'center'], vrij: [4, 'FFEBE9E4', 1, 'center', 'center'], run: [4, null, 1, 'center', 'center'],
+    exc: [0, 'FFE9DEFA', 1, 'center', 'center'], vrij: [4, 'FFEBE9E4', 1, 'center', 'center'], run: [4, null, 1, 'center', 'center'], bureau: [0, 'FFFBE0EC', 1, 'center', 'center'],
     off: [4, 'FFE0DED8', 1, 'center', 'center'], free: [0, null, 1, 'center', 'center'],
   };
   const NAMED = Object.keys(NS);

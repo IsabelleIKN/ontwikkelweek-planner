@@ -34,7 +34,7 @@ function normalize(s) {
   s.teachers.forEach(t => { t.tags = Array.isArray(t.tags) ? t.tags.filter(x => TAGS.includes(x)) : (t.avo ? ['AVO'] : []); delete t.avo; t.avail = t.avail || {}; DAYS.forEach(d => { t.avail[d] = t.avail[d] || { o: true, m: true }; }); });
   s.classes.forEach(c => { delete c.vast; c.profile = c.profile || (c.year === 1 ? 'gedeeld' : 'WEB'); });
   s.weeks.forEach(w => {
-    w.mode = w.mode || {}; w.dt = w.dt || {}; w.desc = w.desc || {};
+    w.mode = w.mode || {}; w.dt = w.dt || {}; w.desc = w.desc || {}; w.bureau = w.bureau || {};
     GROUPS.forEach(g => { // oudere data had alleen per jaar een structuur: die kopiëren we naar de profielen
       const y = String(gYear(g));
       if (!w.mode[g]) w.mode[g] = w.mode[y] || 'aangepast';
@@ -51,7 +51,7 @@ function newClass(name, year, profile) { return { id: uid(), name, year, profile
 function newWeek(label) {
   const dt = {}, mode = {};
   GROUPS.forEach(g => { mode[g] = 'aangepast'; dt[g] = {}; DAYS.forEach(d => { dt[g][d] = { type: d === 'ma' ? 'studiedag' : d === 'vr' ? 'voornazorg' : 'onderwijs', label: '' }; }); });
-  return { id: uid(), label, start: '', mode, dt, hidden: {}, desc: {}, cells: {}, ovr: {}, steps: {}, okdbl: {} };
+  return { id: uid(), label, start: '', mode, dt, hidden: {}, desc: {}, bureau: {}, cells: {}, ovr: {}, steps: {}, okdbl: {} };
 }
 const T = id => S.teachers.find(t => t.id === id);
 const C = id => S.classes.find(c => c.id === id);
@@ -59,6 +59,7 @@ const curWeek = () => S.weeks.find(w => w.id === S.cur) || null;
 const cmpClass = (a, b) => a.year - b.year || a.name.localeCompare(b.name, 'nl', { numeric: true });
 const cmpName = (a, b) => a.name.localeCompare(b.name, 'nl');
 const cellKey = (c, d, p) => `${c}|${d}|${p}`;
+const isBureau = (w, c, d) => c.year === 3 && !!w.bureau[c.id + '|' + d] && w.dt[gk(c)][d].type === 'onderwijs'; // excursie, studiedag en voor-/nazorg gaan voor // jaar 3: Bureau, hele dag, loopt door met vaste docenten
 const isFree = (w, c, d, p) => { const k = w.cells[cellKey(c.id, d, p)]; return !!(k && k.free); }; // klas heeft vrij volgens het normale rooster
 
 function dateOf(w, d) {
@@ -80,7 +81,7 @@ function teachState(w, t, d, p) {
 // docenten van een klas in een dagdeel
 function classTeachers(w, c, d, p) {
   const ty = w.dt[gk(c)][d].type;
-  if (ty === 'studiedag' || ty === 'voornazorg' || isFree(w, c, d, p)) return { ids: [] };
+  if (ty === 'studiedag' || ty === 'voornazorg' || isBureau(w, c, d) || isFree(w, c, d, p)) return { ids: [] };
   const cell = w.cells[cellKey(c.id, d, p)];
   return { ids: cell ? cell.t.filter(id => T(id)) : [] };
 }
@@ -111,7 +112,7 @@ function issues(w) {
     if (w.hidden[c.id]) continue;
     for (const d of DAYS) for (const p of PARTS) {
       const ty = w.dt[gk(c)][d].type;
-      if ((ty === 'excursie' || (ty === 'onderwijs' && w.mode[gk(c)] === 'aangepast')) && !isFree(w, c, d, p) && !classTeachers(w, c, d, p).ids.length) empty++;
+      if ((ty === 'excursie' || (ty === 'onderwijs' && w.mode[gk(c)] === 'aangepast')) && !isBureau(w, c, d) && !isFree(w, c, d, p) && !classTeachers(w, c, d, p).ids.length) empty++;
     }
   }
   return { list, empty };
@@ -214,13 +215,14 @@ function gridCard(w) {
       for (const d of DAYS) {
         const x = w.dt[g][d];
         if (x.type === 'studiedag' || x.type === 'voornazorg') { h += `<td colspan="2" class="blk t-${x.type}">${TYPES[x.type]}${x.type === 'voornazorg' ? '<br><span class="muted">studenten vrij</span>' : ''}</td>`; continue; }
+        if (isBureau(w, c, d)) { h += `<td colspan="2" class="cell edit bureau" data-a="opencell" data-cl="${c.id}" data-d="${d}" data-p="dag"><b>Bureau</b><div class="muted">loopt door</div></td>`; continue; }
         if (x.type === 'onderwijs' && w.mode[g] === 'doorlopend') { h += dayCellHtml(w, c, d); continue; }
         for (const p of PARTS) h += cellHtml(w, c, d, p, x);
       }
       h += '</tr>';
     }
   }
-  h += `</tbody></table></div><div class="legend"><span><i style="background:var(--in)"></i>ingezet</span><span><i style="background:var(--dbl)"></i>dubbel ingezet</span><span><i style="background:var(--bad)"></i>ingezet terwijl niet beschikbaar</span><span><i style="background:var(--exc)"></i>excursie</span></div></section>`;
+  h += `</tbody></table></div><div class="legend"><span><i style="background:var(--in)"></i>ingezet</span><span><i style="background:var(--dbl)"></i>dubbel ingezet</span><span><i style="background:var(--bad)"></i>ingezet terwijl niet beschikbaar</span><span><i style="background:var(--exc)"></i>excursie</span><span><i style="background:var(--bur)"></i>Bureau (jaar 3)</span></div></section>`;
   return h;
 }
 function chipsFor(w, d, p, ids) {
@@ -278,6 +280,7 @@ function specPart(w, c, d, ps) {
   const g = gk(c), x = w.dt[g][d];
   if (x.type === 'studiedag') return { kind: 'studie', title: 'Studiedag' };
   if (x.type === 'voornazorg') return { kind: 'vn', title: 'Voor-/nazorg', sub: 'studenten vrij' };
+  if (isBureau(w, c, d)) return { kind: 'bureau', title: 'Bureau', sub: 'loopt door' };
   if (ps.every(p => isFree(w, c, d, p))) return { kind: 'vrij', title: 'Vrij' };
   const ids = [...new Set(ps.flatMap(p => classTeachers(w, c, d, p).ids))];
   const people = ids.map(id => { const lv = ps.map(p => slot(w, T(id), d, p).level); return { name: T(id).name, lvl: lv.includes('bad') ? 'bad' : lv.includes('dbl') ? 'dbl' : 'ok' }; });
@@ -287,13 +290,14 @@ function specPart(w, c, d, ps) {
 // één samengevoegd vak voor de hele dag, of twee dagdelen
 function specDay(w, c, d) {
   const g = gk(c), x = w.dt[g][d];
-  if (x.type === 'studiedag' || x.type === 'voornazorg' || (x.type === 'onderwijs' && w.mode[g] === 'doorlopend') || PARTS.every(p => isFree(w, c, d, p))) return [specPart(w, c, d, PARTS)];
+  if (x.type === 'studiedag' || x.type === 'voornazorg' || (x.type === 'onderwijs' && w.mode[g] === 'doorlopend') || isBureau(w, c, d) || PARTS.every(p => isFree(w, c, d, p))) return [specPart(w, c, d, PARTS)];
   return PARTS.map(p => specPart(w, c, d, [p]));
 }
 const weekRange = w => w.start ? `${dateOf(w, 'ma')} – ${dateOf(w, 'vr')}` : '';
 function specHtml(sp) {
   const pp = (sp.people || []).map(pe => `<span class="chip t ${pe.lvl === 'bad' ? 'bad' : pe.lvl === 'dbl' ? 'dbl' : ''}">${esc(pe.name)}</span>`).join('');
   const act = sp.act ? `<div class="act">${esc(sp.act)}</div>` : '';
+  if (sp.kind === 'bureau') return '<b>Bureau</b><div class="muted">loopt door</div>';
   if (sp.kind === 'run') return '<span class="muted">rooster loopt door</span>';
   if (sp.kind === 'leeg') return '<span class="none">nog niemand</span>';
   if (sp.kind === 'exc') return `<div class="exc-t">${esc(sp.title)}</div>${pp || '<span class="none">nog niemand</span>'}${act}`;
@@ -401,7 +405,7 @@ function renderModal() {
     const cells = parts.map(p => w.cells[cellKey(m.cl, m.d, p)]), cell = cells[0] || { a: '' };
     const x = w.dt[g][m.d], doorl = x.type === 'onderwijs' && w.mode[g] === 'doorlopend';
     const cur = new Set(); parts.forEach(p => classTeachers(w, c, m.d, p).ids.forEach(i => cur.add(i)));
-    const fr = parts.every(p => isFree(w, c, m.d, p));
+    const fr = parts.every(p => isFree(w, c, m.d, p)), bu = isBureau(w, c, m.d);
     const rows = S.teachers.map(t => {
       const sts = parts.map(p => teachState(w, t, m.d, p)), bad = sts.find(s => !s.ok);
       const others = parts.flatMap(p => assignments(w, t.id, m.d, p).filter(a => a.cls.id !== c.id));
@@ -415,12 +419,13 @@ function renderModal() {
       return { t, sel, label, cls, rank };
     }).sort((a, b) => a.rank - b.rank || (+b.t.tags.includes('AVO')) - (+a.t.tags.includes('AVO')) || cmpName(a.t, b.t)); // AVO-docenten eerst bij gelijke beschikbaarheid
     const F = ui.filter, shown = rows.filter(r => r.sel || ((!F.tags.length || r.t.tags.some(g => F.tags.includes(g))) && (!F.free || r.rank === 0)));
-    h = `<h3>${esc(c.name)} · ${DAYNAMES[m.d]}${m.p === 'dag' ? '' : ' ' + PARTNAME[m.p].toLowerCase()}</h3><div class="muted">${x.type === 'excursie' ? '🚌 ' + esc(x.label || 'Excursie') + ' — kies de begeleiders' : doorl ? 'Rooster loopt door: kies alleen als er iemand op deze klas staat die dag (hele dag)' : PARTTIME[m.p]}</div>
-    <div class="row" style="margin:12px 0 4px;align-items:center"><label class="radio" style="flex-direction:row;color:var(--ink);font-size:14.5px;padding:0"><input type="checkbox" data-c="cellFree" ${fr ? 'checked' : ''}><span><b>Klas heeft vrij</b> <span class="muted">(zit al zo in het normale rooster)</span></span></label>${m.p !== 'dag' ? `<select data-c="cellFreeScope"><option value="dagdeel" ${m.fscope !== 'dag' ? 'selected' : ''}>dit dagdeel</option><option value="dag" ${m.fscope === 'dag' ? 'selected' : ''}>hele dag</option></select>` : ''}</div>
+    h = `<h3>${esc(c.name)} · ${DAYNAMES[m.d]}${m.p === 'dag' ? '' : ' ' + PARTNAME[m.p].toLowerCase()}</h3><div class="muted">${x.type === 'excursie' ? '🚌 ' + esc(x.label || 'Excursie') + ' — kies de begeleiders' : doorl ? 'Rooster loopt door: kies alleen als er iemand op deze klas staat die dag (hele dag)' : (PARTTIME[m.p] || '')}</div>
+    ${c.year === 3 ? `<div class="row" style="margin:12px 0 0"><label class="radio" style="flex-direction:row;color:var(--ink);font-size:14.5px;padding:0"><input type="checkbox" data-c="cellBureau" ${bu ? 'checked' : ''}><span><b>Bureau</b> <span class="muted">(hele dag, loopt door met de vaste docenten)</span></span></label></div>` : ''}
+    ${bu ? '<p class="muted">Geen inzet nodig voor deze dag. De rest van de week blijft zoals ingesteld.</p><div class="foot"><button class="pri" data-a="closemodal">Klaar</button></div>' : `<div class="row" style="margin:12px 0 4px;align-items:center"><label class="radio" style="flex-direction:row;color:var(--ink);font-size:14.5px;padding:0"><input type="checkbox" data-c="cellFree" ${fr ? 'checked' : ''}><span><b>Klas heeft vrij</b> <span class="muted">(zit al zo in het normale rooster)</span></span></label>${m.p !== 'dag' ? `<select data-c="cellFreeScope"><option value="dagdeel" ${m.fscope !== 'dag' ? 'selected' : ''}>dit dagdeel</option><option value="dag" ${m.fscope === 'dag' ? 'selected' : ''}>hele dag</option></select>` : ''}</div>
     ${fr ? '<p class="muted">Geen inzet nodig. Eerder gekoppelde docenten blijven bewaard als je dit weer uitzet.</p><div class="foot"><button class="pri" data-a="closemodal">Klaar</button></div>' : `<label style="margin:8px 0">Activiteit / moduleleider (optioneel)<input data-c="cellA" value="${esc(cell.a || '')}" placeholder="bijv. oplevering module 5.2, leider: …"></label>
     <div class="chips" style="margin:4px 0 6px"><span class="lbl">Filter</span>${TAGS.map(g => `<span class="chip ${F.tags.includes(g) ? 'on' : ''}" data-a="ftag" data-v="${g}">${g}</span>`).join('')}<span class="chip ${F.free ? 'on' : ''}" data-a="ffree">Alleen nog inzetbaar</span>${shown.length < rows.length ? `<span class="muted">${shown.length} van ${rows.length}</span>` : ''}</div>
     <div>${shown.map(r => `<label class="tl ${r.cls}" style="flex-direction:row;font-size:14.5px;color:var(--ink)"><input type="checkbox" data-c="cellT" data-id="${r.t.id}" ${r.sel ? 'checked' : ''}> ${esc(r.t.name)}${tagBadges(r.t)}<span class="st">${esc(r.label)}</span></label>`).join('') || '<p class="muted">Geen docenten voor dit filter.</p>'}</div>
-    <div class="foot"><button class="pri" data-a="closemodal">Klaar</button></div>`}`;
+    <div class="foot"><button class="pri" data-a="closemodal">Klaar</button></div>`}`}`;
   } else if (m.t === 'ovr') {
     const w = curWeek(), t = T(m.tid), s = slot(w, t, m.d, m.p);
     h = `<h3>${esc(t.name)} · ${DAYNAMES[m.d]} ${PARTNAME[m.p].toLowerCase()}</h3><div class="muted">Vaste patroon: ${t.avail[m.d][m.p] ? 'inzetbaar' : 'niet inzetbaar'}${s.as.length ? ' · nu bij ' + s.as.map(a => a.cls.name).join(', ') : ''}</div>
@@ -502,6 +507,7 @@ document.addEventListener('change', e => {
     case 'tname': { const t = T(D.t); if (v.trim()) t.name = v.trim(); save(); later(); break; }
     case 'cname': { const c = C(D.cl); if (v.trim()) c.name = v.trim(); save(); later(); break; }
     case 'cprof': C(D.cl).profile = v; changed(); break;
+    case 'cellBureau': { const k = m.cl + '|' + m.d; if (el.checked) w.bureau[k] = true; else delete w.bureau[k]; save(); render(); break; }
     case 'cellFreeScope': m.fscope = v; break;
     case 'cellFree': (m.p === 'dag' || m.fscope === 'dag' ? PARTS : [m.p]).forEach(p => { const cell = ensureCell(w, cellKey(m.cl, m.d, p)); if (el.checked) cell.free = true; else delete cell.free; }); save(); render(); break;
     case 'cellT': {
@@ -588,6 +594,7 @@ function exportXlsx() {
   })];
   const ros = [['Klas', ...hdr.slice(1)], ...S.classes.filter(c => !w.hidden[c.id]).sort(cmpClass).map(c => [c.name + (c.year > 1 ? ' ' + c.profile : ''), ...DAYS.flatMap(d => PARTS.map(p => {
     const x = w.dt[gk(c)][d]; if (x.type === 'studiedag' || x.type === 'voornazorg') return TYPES[x.type];
+    if (isBureau(w, c, d)) return 'Bureau (loopt door)';
     if (isFree(w, c, d, p)) return 'Vrij';
     const ct = classTeachers(w, c, d, p), cell = w.cells[cellKey(c.id, d, p)];
     const base = ct.ids.map(id => T(id).name).join(', ');
