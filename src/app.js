@@ -34,7 +34,7 @@ function normalize(s) {
   s.teachers.forEach(t => { t.tags = Array.isArray(t.tags) ? t.tags.filter(x => TAGS.includes(x)) : (t.avo ? ['AVO'] : []); delete t.avo; t.avail = t.avail || {}; DAYS.forEach(d => { t.avail[d] = t.avail[d] || { o: true, m: true }; }); });
   s.classes.forEach(c => { delete c.vast; c.profile = c.profile || (c.year === 1 ? 'gedeeld' : 'WEB'); });
   s.weeks.forEach(w => {
-    w.mode = w.mode || {}; w.dt = w.dt || {};
+    w.mode = w.mode || {}; w.dt = w.dt || {}; w.desc = w.desc || {};
     GROUPS.forEach(g => { // oudere data had alleen per jaar een structuur: die kopiëren we naar de profielen
       const y = String(gYear(g));
       if (!w.mode[g]) w.mode[g] = w.mode[y] || 'aangepast';
@@ -51,7 +51,7 @@ function newClass(name, year, profile) { return { id: uid(), name, year, profile
 function newWeek(label) {
   const dt = {}, mode = {};
   GROUPS.forEach(g => { mode[g] = 'aangepast'; dt[g] = {}; DAYS.forEach(d => { dt[g][d] = { type: d === 'ma' ? 'studiedag' : d === 'vr' ? 'voornazorg' : 'onderwijs', label: '' }; }); });
-  return { id: uid(), label, start: '', mode, dt, hidden: {}, cells: {}, ovr: {}, steps: {}, okdbl: {} };
+  return { id: uid(), label, start: '', mode, dt, hidden: {}, desc: {}, cells: {}, ovr: {}, steps: {}, okdbl: {} };
 }
 const T = id => S.teachers.find(t => t.id === id);
 const C = id => S.classes.find(c => c.id === id);
@@ -183,7 +183,7 @@ function viewWeek(w) {
       const x = w.dt[g][d];
       h += `<td class="t-${x.type}"><select data-c="dtype" data-g="${g}" data-d="${d}">${Object.entries(TYPES).map(([k, v]) => `<option value="${k}" ${x.type === k ? 'selected' : ''}>${v}</option>`).join('')}</select>${x.type === 'excursie' ? `<input data-c="dlabel" data-g="${g}" data-d="${d}" placeholder="Waarheen?" value="${esc(x.label)}">` : ''}</td>`;
     }
-    h += '</tr>';
+    h += `</tr><tr class="descrow"><td colspan="6"><label>Inhoud van de week — ${esc(gLabel(g))}<textarea rows="2" data-c="gdesc" data-g="${g}" placeholder="Algemene beschrijving van de inhoud, van de curriculumhouder (excursies beschrijf je in het blok zelf)">${esc(w.desc[g] || '')}</textarea></label></td></tr>`;
   }
   h += `</tbody></table></div><p class="muted" style="margin:10px 0 0">Aangepast rooster = twee blokken per dag: ochtend ${PARTTIME.o}, pauze 12:15–12:45, middag ${PARTTIME.m}.</p></section>`;
 
@@ -309,7 +309,7 @@ function viewOverzicht(w) {
     for (const c of vis.filter(c => gk(c) === g)) {
       const days = DAYS.map(d => specDay(w, c, d));
       const cellsOf = i => DAYS.map((d, k) => days[k].length === 1 ? (i === 0 ? `<td rowspan="2" class="k-${days[k][0].kind}">${specHtml(days[k][0])}</td>` : '') : `<td class="k-${days[k][i].kind}">${specHtml(days[k][i])}</td>`).join('');
-      h += `<article class="vc"><header><b>${esc(c.name)}</b><span class="prof">${esc(gLabel(g))}</span><span class="badge">${w.mode[g] === 'doorlopend' ? 'rooster loopt door' : 'aangepast rooster'}</span></header><table><thead><tr><th></th>${DAYS.map(d => `<th>${DAYNAMES[d].slice(0, 2)}<small>${dateOf(w, d) || '&nbsp;'}</small></th>`).join('')}</tr></thead><tbody><tr><th class="pl">Och&shy;tend</th>${cellsOf(0)}</tr><tr><th class="pl">Mid&shy;dag</th>${cellsOf(1)}</tr></tbody></table></article>`;
+      h += `<article class="vc"><header><b>${esc(c.name)}</b><span class="prof">${esc(gLabel(g))}</span><span class="badge">${w.mode[g] === 'doorlopend' ? 'rooster loopt door' : 'aangepast rooster'}</span></header>${w.desc[g] ? `<p class="vdesc">${esc(w.desc[g])}</p>` : ''}<table><thead><tr><th></th>${DAYS.map(d => `<th>${DAYNAMES[d].slice(0, 2)}<small>${dateOf(w, d) || '&nbsp;'}</small></th>`).join('')}</tr></thead><tbody><tr><th class="pl">Och&shy;tend</th>${cellsOf(0)}</tr><tr><th class="pl">Mid&shy;dag</th>${cellsOf(1)}</tr></tbody></table></article>`;
     }
   }
   h += '</div>';
@@ -335,6 +335,7 @@ function overviewSheet(w) {
   for (const c of S.classes.filter(c => !w.hidden[c.id]).sort(cmpClass)) {
     const r0 = rows.length;
     rows.push([{ v: `${c.name}${c.year > 1 ? ' · ' + c.profile : ''}   —   ${w.mode[gk(c)] === 'doorlopend' ? 'rooster loopt door' : 'aangepast rooster'}`, s: 'title' }]); merges.push(`A${r0 + 1}:F${r0 + 1}`); heights[r0] = 22;
+    if (w.desc[gk(c)]) { rows.push([{ v: w.desc[gk(c)], s: 'name' }]); merges.push(`A${rows.length}:F${rows.length}`); heights[rows.length - 1] = Math.max(20, Math.ceil(w.desc[gk(c)].length / 120 + w.desc[gk(c)].split('\n').length - 1) * 15 + 6); }
     rows.push([{ v: '', s: 'head' }, ...DAYS.map(d => ({ v: DAYNAMES[d] + (dateOf(w, d) ? '  ' + dateOf(w, d) : ''), s: 'head' }))]);
     const ro = [{ v: 'Ochtend', s: 'part' }], rm = [{ v: 'Middag', s: 'part' }];
     DAYS.forEach((d, i) => {
@@ -450,7 +451,7 @@ document.addEventListener('click', e => {
   switch (D.a) {
     case 'tab': ui.tab = D.v; render(); window.scrollTo(0, 0); break;
     case 'newweek': { const n = newWeek('Nieuwe ontwikkelweek'); S.weeks.push(n); S.cur = n.id; if (ui.tab !== 'week' && ui.tab !== 'bezetting') ui.tab = 'week'; changed(); toast('Nieuwe week aangemaakt. Geef hem een naam.'); break; }
-    case 'dupweek': { const n = JSON.parse(JSON.stringify(w)); n.id = uid(); n.label = w.label + ' (kopie)'; n.start = ''; n.steps = {}; S.weeks.push(n); S.cur = n.id; changed(); toast('Week gekopieerd, inclusief inzet.'); break; }
+    case 'dupweek': { const n = JSON.parse(JSON.stringify(w)); n.id = uid(); n.label = w.label + ' (kopie)'; n.start = ''; n.steps = {}; n.desc = {}; S.weeks.push(n); S.cur = n.id; changed(); toast('Week gekopieerd, inclusief inzet.'); break; }
     case 'delweek': confirmDlg(`Week “${w.label}” definitief verwijderen?`, () => { S.weeks = S.weeks.filter(x => x.id !== w.id); S.cur = S.weeks[0] ? S.weeks[0].id : null; ui.modal = null; changed(); }, 'Verwijderen'); break;
     case 'mode': w.mode[D.g] = D.v; changed(); break;
     case 'modeall': GROUPS.forEach(g => { w.mode[g] = D.v; }); changed(); break;
@@ -493,6 +494,7 @@ document.addEventListener('change', e => {
     case 'wsel': S.cur = v; changed(); break;
     case 'step': if (el.checked) w.steps[D.n] = true; else delete w.steps[D.n]; changed(); break;
     case 'wlabel': w.label = v; save(); later(); break;
+    case 'gdesc': w.desc[D.g] = v; save(); later(); break;
     case 'wstart': w.start = v; changed(); break;
     case 'dtype': w.dt[D.g][D.d].type = v; changed(); break;
     case 'dtypeall': if (v) { GROUPS.forEach(g => { w.dt[g][D.d].type = v; }); changed(); } break;
@@ -593,7 +595,7 @@ function exportXlsx() {
     if (w.mode[gk(c)] === 'doorlopend') return 'Rooster loopt door' + (base ? ' — ' + base : '');
     return base + (cell && cell.a ? (base ? ' — ' : '') + cell.a : '');
   }))])];
-  const struct = [['Groep', 'Rooster', ...DAYS.map(d => DAYNAMES[d])], ...GROUPS.map(g => [gLabel(g), w.mode[g] === 'doorlopend' ? 'Rooster loopt door' : 'Aangepast rooster', ...DAYS.map(d => TYPES[w.dt[g][d].type] + (w.dt[g][d].label ? ': ' + w.dt[g][d].label : ''))]),
+  const struct = [['Groep', 'Rooster', ...DAYS.map(d => DAYNAMES[d]), 'Inhoud van de week'], ...GROUPS.map(g => [gLabel(g), w.mode[g] === 'doorlopend' ? 'Rooster loopt door' : 'Aangepast rooster', ...DAYS.map(d => TYPES[w.dt[g][d].type] + (w.dt[g][d].label ? ': ' + w.dt[g][d].label : '')), w.desc[g] || '']),
   [], ['Aangepast rooster', `ochtend ${PARTTIME.o}`, 'pauze 12:15–12:45', `middag ${PARTTIME.m}`]];
   const docs = [['Naam', ...DAYS, 'Tags'], ...[...S.teachers].sort(cmpName).map(t => [t.name, ...DAYS.map(d => avStr(t.avail[d])), t.tags.join(', ')])];
   const kl = [['Naam', 'Jaar', 'Profiel'], ...[...S.classes].sort(cmpClass).map(c => [c.name, c.year, c.year > 1 ? c.profile : 'gedeeld'])];
@@ -601,7 +603,7 @@ function exportXlsx() {
   const bytes = XL.write([
     overviewSheet(w),
     { name: 'Bezetting docenten', rows: occ, widths: [26, ...Array(10).fill(15), 9], headerRows: 0, landscape: true }, { name: 'Rooster per klas', rows: ros, widths: wc },
-    { name: 'Structuur', rows: struct, widths: [18, 22, 18, 18, 18, 18, 18] },
+    { name: 'Structuur', rows: struct, widths: [18, 22, 18, 18, 18, 18, 18, 60] },
     { name: 'Docenten', rows: docs, widths: [26, 8, 8, 8, 8, 8, 8] }, { name: 'Klassen', rows: kl, widths: [18, 8, 12] }]);
   download(`ontwikkelweek-${slug(w.label)}.xlsx`, new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
 }
